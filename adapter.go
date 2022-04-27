@@ -89,6 +89,28 @@ func NewAdapter(url string, timeout ...interface{}) (persist.BatchAdapter, error
 	return baseNewAdapter(clientOption, databaseName, defaultCollectionName, timeout...)
 }
 
+// NewAdapterWithDB is the constructor for Adapter that uses an already
+// existing Mongo DB connection.
+func NewAdapterWithDB(db *mongo.Database, timeout ...interface{}) (persist.BatchAdapter, error) {
+	a := &adapter{
+		filtered: false,
+	}
+	if len(timeout) == 1 {
+		a.timeout = timeout[0].(time.Duration)
+	} else if len(timeout) > 1 {
+		return nil, errors.New("too many arguments")
+	} else {
+		a.timeout = defaultTimeout
+	}
+
+	// Open the DB, create it if not existed.
+	err := a.openWithDB(db, defaultCollectionName)
+	if err != nil {
+		return nil, err
+	}
+	return a, nil
+}
+
 // NewAdapterWithClientOption is an alternative constructor for Adapter
 // that does the same as NewAdapter, but uses mongo.ClientOption instead of a Mongo URL + a databaseName option
 func NewAdapterWithClientOption(clientOption *options.ClientOptions, databaseName string, timeout ...interface{}) (persist.BatchAdapter, error) {
@@ -163,6 +185,32 @@ func (a *adapter) open(databaseName string, collectionName string) error {
 	}
 
 	if _, err = collection.Indexes().CreateOne(
+		context.Background(),
+		mongo.IndexModel{
+			Keys:    keysDoc,
+			Options: options.Index().SetUnique(true),
+		},
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (a *adapter) openWithDB(db *mongo.Database, collectionName string) error {
+	collection := db.Collection(collectionName)
+
+	a.client = db.Client()
+	a.collection = collection
+
+	indexes := []string{"ptype", "v0", "v1", "v2", "v3", "v4", "v5"}
+	keysDoc := bsonx.Doc{}
+
+	for _, k := range indexes {
+		keysDoc = keysDoc.Append(k, bsonx.Int32(1))
+	}
+
+	if _, err := collection.Indexes().CreateOne(
 		context.Background(),
 		mongo.IndexModel{
 			Keys:    keysDoc,
