@@ -1,4 +1,4 @@
-module github.com/casbin/mongodb-adapter/v3
+module github.com/datasoil/mongodb-adapter/v3
 
 go 1.13
 
